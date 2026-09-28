@@ -51,6 +51,38 @@ if [ -z "${MARMOT_SERVER_ENCRYPTION_KEY:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Drop plugin versions this binary will never load
+# ---------------------------------------------------------------------------
+# Each Marmot release pins its own version of every core plugin, and the cache
+# keeps one directory per version without ever deleting any. Marmot ignores
+# the versions it does not pin, so after an image upgrade the old set is dead
+# weight: 0.10.0 -> 0.11.0 re-pinned all 31 plugins and added 40, leaving
+# 2.3 GB on the volume where the live set needs 1.5 GB. When the binary's
+# version differs from the one that filled the cache, wipe the cache and let
+# the bootstrap pass download the current set. A cache with no marker predates
+# this check, so it is treated the same way.
+PLUGINS_DIR="${MARMOT_PLUGINS_DIR:-/data/plugins}"
+CACHE_DIR="${MARMOT_PLUGIN_CACHE_DIR:-${PLUGINS_DIR}/cache}"
+VERSION_MARKER="${PLUGINS_DIR}/.cache-marmot-version"
+MARMOT_BUILD="$(marmot version 2>/dev/null | head -n 1)"
+if [ -n "${MARMOT_BUILD}" ] && [ -d "${CACHE_DIR}" ] && \
+   [ "$(cat "${VERSION_MARKER}" 2>/dev/null)" != "${MARMOT_BUILD}" ]; then
+    case "${CACHE_DIR}" in
+        /data/?*)
+            echo "marmot: plugin cache was filled by another version, clearing it for ${MARMOT_BUILD}"
+            rm -rf "${CACHE_DIR}"
+            ;;
+        *)
+            echo "marmot: plugin cache ${CACHE_DIR} is outside /data, leaving it alone" >&2
+            ;;
+    esac
+fi
+if [ -n "${MARMOT_BUILD}" ]; then
+    mkdir -p "${PLUGINS_DIR}"
+    printf '%s\n' "${MARMOT_BUILD}" > "${VERSION_MARKER}"
+fi
+
+# ---------------------------------------------------------------------------
 # Volume ownership
 # ---------------------------------------------------------------------------
 # Railway mounts volumes root-owned with a lost+found directory, and the image

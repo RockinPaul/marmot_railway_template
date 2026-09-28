@@ -89,6 +89,10 @@ access to stored pipeline credentials — nothing else, since everything else li
 - **`MARMOT_PLUGINS_DIR` on the volume.** `MARMOT_PLUGIN_CACHE_DIR` defaults to
   `$MARMOT_PLUGINS_DIR/cache`, so one variable moves both and a 1.5 GB download becomes a one-time
   cost.
+- **The cache is cleared when the Marmot version changes.** Every release pins its own version of
+  each plugin, and Marmot never deletes the old ones — going from 0.10.0 to 0.11.0 left 2.3 GB on the
+  volume where the live set needs 1.5 GB. The entrypoint records which version filled the cache and
+  wipes it when the binary differs, so the volume holds one release's plugins at a time.
 - **Root only long enough to hand over the volume.** Railway mounts volumes root-owned; the
   entrypoint chowns `/data` to uid 10001 and drops back with `su-exec` before exec'ing the server, so
   the service itself still runs unprivileged as upstream intended.
@@ -97,11 +101,14 @@ access to stored pipeline credentials — nothing else, since everything else li
 ## What persists
 
 Postgres holds the catalog: assets, lineage, glossary, teams, users, API keys. The volume holds only
-the plugin cache, which is rebuildable — if you lose it, the next boot downloads it again.
+the plugin cache, which is rebuildable — if you lose it, the next boot downloads it again. Plugins you
+install by hand go in `/data/plugins` itself, outside the cache, and are never cleared.
 
 ## Upgrading
 
-Bump `MARMOT_VERSION` in the `Dockerfile` and push. Marmot runs its own migrations at startup.
+Bump `MARMOT_VERSION` in the `Dockerfile` and push. Marmot runs its own migrations at startup. The
+first boot on a new version clears the plugin cache and downloads that release's set, so it takes as
+long as the first deploy did.
 
 ## Licences
 
