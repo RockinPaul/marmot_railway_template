@@ -17,9 +17,10 @@ own schema migrations at startup, so there is nothing to initialise by hand.
 The catalog lives entirely in Postgres — assets, lineage, glossary, teams, users, API keys. The
 volume attached to the service holds only Marmot's plugin cache, which is rebuildable.
 
-Two things are worth knowing before the first deploy. Marmot installs 31 connector plugins from a
-container registry when it starts, roughly 800 MB, and there is no setting to narrow that list — so
-the first boot takes several minutes and the volume exists to make sure you only pay for it once.
+Two things are worth knowing before the first deploy. Marmot installs its connector plugins from a
+container registry when it starts — 71 of them in 0.11.0, roughly 1.5 GB — and there is no setting to
+narrow that list, so the first boot takes a few minutes and the volume exists to make sure you only
+pay for it once.
 And Marmot's built-in account is `admin:admin` until it is changed, which this template does on your
 behalf before the public listener ever opens.
 
@@ -46,7 +47,7 @@ behalf before the public listener ever opens.
 ### Deployment Dependencies
 
 - Upstream project: [marmotdata/marmot](https://github.com/marmotdata/marmot) (MIT), image
-  `ghcr.io/marmotdata/marmot:0.10.0`.
+  `ghcr.io/marmotdata/marmot:0.11.0`.
 - Upstream documentation: [Marmot docs](https://marmotdata.io/docs/introduction).
 - Template source: [RockinPaul/marmot_railway_template](https://github.com/RockinPaul/marmot_railway_template) (MIT).
 
@@ -69,6 +70,15 @@ XChaCha20-Poly1305, whose key must be exactly 32 bytes — not something a rando
 satisfy — so the key is derived from this seed deterministically. The same seed always produces the
 same key, which is what lets credentials survive a redeploy. Losing the seed costs you the stored
 pipeline credentials and nothing else, because the rest of the catalog is in Postgres.
+
+**If you deployed this template while it ran Marmot 0.10.0, update.** That release answers
+`GET /api/v1/plugins` and `GET /api/v1/plugins/aws/credentials/status` without signing in — a
+read-only disclosure of which connector plugins are registered and whether the server holds AWS
+credentials, never the credentials themselves. 0.11.0 requires a signed-in user with ingestion
+permissions for both, and also signs out existing sessions when a password changes, disables a
+deactivated user's API keys and requires `assets:view` for catalog search. Users, passwords, API keys
+and the catalog carry over; Marmot migrates the database on the first boot, and that boot re-downloads
+the plugin set, so it is as slow as the first deploy.
 
 **Notes.** The healthcheck is `/readyz`, which Marmot serves without credentials. `PORT` is 8080 and
 the domain targets it. The service runs as a non-root user, as upstream intended; the entrypoint is

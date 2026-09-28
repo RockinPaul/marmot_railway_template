@@ -10,7 +10,7 @@ Railway, with the default `admin:admin` credential replaced before the service i
 
 | Service | Base | Public | Role |
 |---|---|---|---|
-| `marmot` | `ghcr.io/marmotdata/marmot:0.10.0` | **yes** | Catalog UI, REST API, MCP endpoint. |
+| `marmot` | `ghcr.io/marmotdata/marmot:0.11.0` | **yes** | Catalog UI, REST API, MCP endpoint. |
 | `Postgres` | Railway's `postgres-ssl` | no | All catalog state. Marmot runs its own migrations. |
 
 Marmot ships as a single static Go binary with the frontend embedded, running as a non-root user —
@@ -37,10 +37,10 @@ The deploy form asks for nothing you have to invent.
 3. Point an agent at `https://your-app.up.railway.app` for the MCP endpoint, or add a plugin to start
    cataloguing sources.
 
-**The first boot is slow, and it is not broken.** Marmot installs 31 core plugins from `ghcr.io` when
-it starts — roughly 800 MB — and there is no setting to skip or narrow that list. The volume turns
-this into a one-time cost: later deployments reuse the cache. Expect several minutes the first time,
-which is why the healthcheck timeout is generous.
+**The first boot is slow, and it is not broken.** Marmot installs its core plugins from `ghcr.io`
+when it starts — 71 of them in 0.11.0, roughly 1.5 GB — and there is no setting to narrow that list,
+only to switch it off. The 5 GB volume turns this into a one-time cost: later deployments reuse the
+cache. Expect a few minutes the first time, which is why the healthcheck timeout is generous.
 
 ## Security
 
@@ -59,6 +59,16 @@ and the password stays whatever it was changed to — including by a person who 
 Marmot also supports SSO through Google, GitHub, GitLab, Keycloak, Okta, Slack, Auth0 and generic
 OIDC. `MARMOT_SERVER_ROOT_URL` is already set to your public domain, which those flows require.
 
+**If your deployment still runs Marmot 0.10.0, update it.** That release answers
+`GET /api/v1/plugins` and `GET /api/v1/plugins/aws/credentials/status` without authentication. It is
+a read-only disclosure — which connector plugins the server has registered, and whether it holds AWS
+credentials and where they come from, never the credentials themselves — but it is open to anyone
+who finds the domain. 0.11.0 puts both behind a signed-in user with ingestion permissions. The same
+release also enforces a pending password change on the API rather than only on the login page,
+disables a deactivated user's API keys, requires `assets:view` for catalog search, and signs out
+existing sessions when a password changes. The update keeps users, passwords, API keys and the
+catalog: Marmot migrates the database itself on the first boot.
+
 ## The encryption key
 
 `MARMOT_SERVER_ENCRYPTION_KEY` has to base64-decode to exactly 32 bytes, because Marmot encrypts
@@ -76,8 +86,9 @@ access to stored pipeline credentials — nothing else, since everything else li
   so Railway's healthcheck can probe it directly without opening a hole.
 - **The bootstrap runs on loopback.** The safest moment to replace a default credential is before the
   service has a public interface at all.
-- **`MARMOT_PLUGINS_DIR` on the volume.** `MARMOT_PLUGIN_CACHE_DIR` defaults to `<plugins>/cache`, so
-  one variable moves both and an 800 MB download becomes a one-time cost.
+- **`MARMOT_PLUGINS_DIR` on the volume.** `MARMOT_PLUGIN_CACHE_DIR` defaults to
+  `$MARMOT_PLUGINS_DIR/cache`, so one variable moves both and a 1.5 GB download becomes a one-time
+  cost.
 - **Root only long enough to hand over the volume.** Railway mounts volumes root-owned; the
   entrypoint chowns `/data` to uid 10001 and drops back with `su-exec` before exec'ing the server, so
   the service itself still runs unprivileged as upstream intended.
