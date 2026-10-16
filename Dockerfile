@@ -5,7 +5,7 @@
 # a non-root user. This layer adds the Railway environment, moves the plugin
 # cache onto a volume, and replaces the default admin:admin credential before
 # anything can reach it.
-ARG MARMOT_VERSION=0.11.0
+ARG MARMOT_VERSION=0.11.1
 FROM ghcr.io/marmotdata/marmot:${MARMOT_VERSION}
 
 # The entrypoint needs root to hand the root-owned Railway volume to the

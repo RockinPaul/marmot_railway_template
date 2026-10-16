@@ -47,7 +47,7 @@ behalf before the public listener ever opens.
 ### Deployment Dependencies
 
 - Upstream project: [marmotdata/marmot](https://github.com/marmotdata/marmot) (MIT), image
-  `ghcr.io/marmotdata/marmot:0.11.0`.
+  `ghcr.io/marmotdata/marmot:0.11.1`.
 - Upstream documentation: [Marmot docs](https://marmotdata.io/docs/introduction).
 - Template source: [RockinPaul/marmot_railway_template](https://github.com/RockinPaul/marmot_railway_template) (MIT).
 

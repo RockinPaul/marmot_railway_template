@@ -10,7 +10,7 @@ Railway, with the default `admin:admin` credential replaced before the service i
 
 | Service | Base | Public | Role |
 |---|---|---|---|
-| `marmot` | `ghcr.io/marmotdata/marmot:0.11.0` | **yes** | Catalog UI, REST API, MCP endpoint. |
+| `marmot` | `ghcr.io/marmotdata/marmot:0.11.1` | **yes** | Catalog UI, REST API, MCP endpoint. |
 | `Postgres` | Railway's `postgres-ssl` | no | All catalog state. Marmot runs its own migrations. |
 
 Marmot ships as a single static Go binary with the frontend embedded, running as a non-root user —
