@@ -5,7 +5,7 @@
 # a non-root user. This layer adds the Railway environment, moves the plugin
 # cache onto a volume, and replaces the default admin:admin credential before
 # anything can reach it.
-ARG MARMOT_VERSION=0.11.1
+ARG MARMOT_VERSION=0.13.0
 FROM ghcr.io/marmotdata/marmot:${MARMOT_VERSION}
 
 # The entrypoint needs root to hand the root-owned Railway volume to the
@@ -16,10 +16,10 @@ USER root
 # BusyBox's setpriv is a capabilities-only stub with no --reuid, so the usual
 # Alpine tool for dropping privileges is needed. su-exec is ~10 KB and is
 # signal-transparent, which matters because it becomes PID 1's child.
-RUN apk add --no-cache su-exec
+RUN apk add --no-cache su-exec curl jq
 
 # Marmot installs every core plugin it is missing from ghcr.io at startup — 71
-# of them as of 0.11.0, about 1.5 GB — and there is no setting to narrow that
+# in 0.13.0, measured at about 1.7 GiB — and there is no setting to narrow that
 # list, only to switch it off. Pointing the plugins directory at the volume
 # turns it into a one-time download instead of a cost paid on every redeploy.
 # MARMOT_PLUGIN_CACHE_DIR defaults to <plugins>/cache, so this one variable
