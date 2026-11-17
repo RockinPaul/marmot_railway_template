@@ -10,7 +10,7 @@ Railway, with the default `admin:admin` credential replaced before the service i
 
 | Service | Base | Public | Role |
 |---|---|---|---|
-| `marmot` | `ghcr.io/marmotdata/marmot:0.11.1` | **yes** | Catalog UI, REST API, MCP endpoint. |
+| `marmot` | `ghcr.io/marmotdata/marmot:0.13.0` | **yes** | Catalog UI, REST API, MCP endpoint. |
 | `Postgres` | Railway's `postgres-ssl` | no | All catalog state. Marmot runs its own migrations. |
 
 Marmot ships as a single static Go binary with the frontend embedded, running as a non-root user —
@@ -38,9 +38,11 @@ The deploy form asks for nothing you have to invent.
    cataloguing sources.
 
 **The first boot is slow, and it is not broken.** Marmot installs its core plugins from `ghcr.io`
-when it starts — 71 of them in 0.11.0, roughly 1.5 GB — and there is no setting to narrow that list,
+when it starts — 71 in 0.13.0, measured at about 1.7 GiB — and there is no setting to narrow that list,
 only to switch it off. The 5 GB volume turns this into a one-time cost: later deployments reuse the
 cache. Expect a few minutes the first time, which is why the healthcheck timeout is generous.
+Marmot also checks a signed plugin index in the background and defaults to security updates;
+those defaults remain enabled. Plugin versions can therefore change without a Marmot image bump.
 
 ## Security
 
@@ -55,6 +57,24 @@ container refuses to start without a password of at least 12 characters.
 
 It is idempotent. On every later boot the `admin:admin` login simply fails, the bootstrap is skipped,
 and the password stays whatever it was changed to — including by a person who rotated it in the UI.
+Only HTTP 401 with `error: "Invalid credentials"` proves that the default login was rejected.
+Transport errors, unexpected HTTP responses and invalid success JSON stop startup. Bootstrap
+credentials stay in private temporary files rather than process arguments.
+
+## Version 0.13 API and permissions
+
+Assets now have first-class Marmot Resource Names (MRNs). For integrations, use
+`PUT /api/v1/assets/by-mrn` to upsert a stable identity, then
+`GET /api/v1/mrn/resolve?mrn=ENCODED-MRN` or `GET /api/v1/assets/identity/ASSET-ID` to resolve it.
+An example MRN is `mrn://asset/table/postgresql@rehearsal/analytics.public.orders`.
+Reading needs `assets:view`; creating/updating needs `assets:manage`. The old `assets:preview`
+permission has been replaced by query permissions; review custom role definitions and API clients.
+
+This update was verified on a fresh Linux/amd64 stack with real Postgres: default credential
+replacement, MRN upsert/resolve/search, a restricted read-only role, and container replacement
+retaining the catalog, an owner-changed password and all 71 plugin files. The measured plugin cache
+was 1,765,128 KiB, below the template's 5 GiB volume. No old-data migration, external connector,
+SSO/browser login or live Railway deployment was rehearsed for this release.
 
 Marmot also supports SSO through Google, GitHub, GitLab, Keycloak, Okta, Slack, Auth0 and generic
 OIDC. `MARMOT_SERVER_ROOT_URL` is already set to your public domain, which those flows require.

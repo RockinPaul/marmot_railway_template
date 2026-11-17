@@ -18,7 +18,7 @@ The catalog lives entirely in Postgres — assets, lineage, glossary, teams, use
 volume attached to the service holds only Marmot's plugin cache, which is rebuildable.
 
 Two things are worth knowing before the first deploy. Marmot installs its connector plugins from a
-container registry when it starts — 71 of them in 0.11.0, roughly 1.5 GB — and there is no setting to
+container registry when it starts — 71 in 0.13.0, measured at about 1.7 GiB — and there is no setting to
 narrow that list, so the first boot takes a few minutes and the volume exists to make sure you only
 pay for it once.
 And Marmot's built-in account is `admin:admin` until it is changed, which this template does on your
@@ -47,7 +47,7 @@ behalf before the public listener ever opens.
 ### Deployment Dependencies
 
 - Upstream project: [marmotdata/marmot](https://github.com/marmotdata/marmot) (MIT), image
-  `ghcr.io/marmotdata/marmot:0.11.1`.
+  `ghcr.io/marmotdata/marmot:0.13.0`.
 - Upstream documentation: [Marmot docs](https://marmotdata.io/docs/introduction).
 - Template source: [RockinPaul/marmot_railway_template](https://github.com/RockinPaul/marmot_railway_template) (MIT).
 
@@ -64,6 +64,16 @@ an MCP endpoint open to whoever tries the obvious pair. So on first boot the ent
 bound to loopback, signs in with the default credential, replaces the password with the generated
 one, stops that instance, and only then opens the public listener. It is idempotent: on later boots
 the default login fails, the step is skipped, and a password you rotated yourself is left alone.
+Only the upstream's exact HTTP 401 `Invalid credentials` response permits that skip; ambiguous
+errors stop startup. Credentials are passed through private files rather than process arguments.
+
+**Version 0.13 integrations:** MRNs are first-class asset identities. Use the MRN upsert/resolve
+API for stable references; reads need `assets:view`, writes need `assets:manage`. Query permissions
+replace the former `assets:preview` permission. Review custom roles and API clients. Marmot's signed
+plugin-index checks and automatic security updates remain enabled, so cache versions may change
+between image releases. A fresh Linux/amd64 test verified MRN operations, restricted-role guards,
+and catalog/password/plugin persistence across container replacement; it did not rehearse old-data
+migration, external connectors, SSO/browser login or Railway deployment.
 
 **Keep `MARMOT_ENCRYPTION_SEED`.** Marmot encrypts stored pipeline credentials with
 XChaCha20-Poly1305, whose key must be exactly 32 bytes — not something a random secret string can

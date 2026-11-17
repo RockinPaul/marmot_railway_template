@@ -5,6 +5,7 @@ MARMOT_UID=10001
 MARMOT_GID=10001
 DATA_DIR="$(dirname "${MARMOT_PLUGINS_DIR:-/data/plugins}")"
 BOOTSTRAP_PORT=18080
+umask 077
 
 export MARMOT_SERVER_PORT="${PORT:-8080}"
 
@@ -51,16 +52,12 @@ if [ -z "${MARMOT_SERVER_ENCRYPTION_KEY:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Drop plugin versions this binary will never load
+# Refresh the rebuildable plugin cache when the Marmot release changes
 # ---------------------------------------------------------------------------
-# Each Marmot release pins its own version of every core plugin, and the cache
-# keeps one directory per version without ever deleting any. Marmot ignores
-# the versions it does not pin, so after an image upgrade the old set is dead
-# weight: 0.10.0 -> 0.11.0 re-pinned all 31 plugins and added 40, leaving
-# 2.3 GB on the volume where the live set needs 1.5 GB. When the binary's
-# version differs from the one that filled the cache, wipe the cache and let
-# the bootstrap pass download the current set. A cache with no marker predates
-# this check, so it is treated the same way.
+# The cache keeps one directory per plugin version without deleting old ones.
+# Refresh it on a release change so obsolete versions do not consume the volume;
+# a cache with no marker predates this check. Within a release, retain the cache,
+# including security updates installed by Marmot's signed-index background updater.
 PLUGINS_DIR="${MARMOT_PLUGINS_DIR:-/data/plugins}"
 CACHE_DIR="${MARMOT_PLUGIN_CACHE_DIR:-${PLUGINS_DIR}/cache}"
 VERSION_MARKER="${PLUGINS_DIR}/.cache-marmot-version"
@@ -130,34 +127,51 @@ su-exec "${MARMOT_UID}:${MARMOT_GID}" \
 BOOT_PID=$!
 wait_for_ready "${BOOTSTRAP_PORT}"
 
-LOGIN_BODY="$(
-    wget -q -O- --header='Content-Type: application/json' \
-        --post-data='{"username":"admin","password":"admin"}' \
-        "http://127.0.0.1:${BOOTSTRAP_PORT}/api/v1/users/login" 2>/dev/null || true
-)"
+LOGIN_RESPONSE="$(mktemp)"
+AUTH_CONFIG="$(mktemp)"
+PASSWORD_BODY="$(mktemp)"
+trap 'rm -f "${LOGIN_RESPONSE}" "${AUTH_CONFIG}" "${PASSWORD_BODY}"' EXIT
 
-case "${LOGIN_BODY}" in
-    *access_token*)
-        TOKEN="$(printf '%s' "${LOGIN_BODY}" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')"
-        printf '{"new_password":"%s"}' "${MARMOT_ADMIN_PASSWORD}" > /tmp/pw.json
-        if wget -q -O /dev/null --header='Content-Type: application/json' \
-                --header="Authorization: Bearer ${TOKEN}" \
-                --post-file=/tmp/pw.json \
+bootstrap_abort() {
+    echo "FATAL: $1; refusing to expose the public listener." >&2
+    kill -TERM "${BOOT_PID}" 2>/dev/null || true
+    wait "${BOOT_PID}" 2>/dev/null || true
+    exit 1
+}
+
+if ! LOGIN_STATUS="$(curl --silent --show-error --output "${LOGIN_RESPONSE}" \
+        --write-out '%{http_code}' --header 'Content-Type: application/json' \
+        --data '{"username":"admin","password":"admin"}' \
+        "http://127.0.0.1:${BOOTSTRAP_PORT}/api/v1/users/login")"; then
+    bootstrap_abort "default-credential login transport failed"
+fi
+
+case "${LOGIN_STATUS}" in
+    200)
+        if ! jq -er '.access_token | select(type == "string" and test("^[A-Za-z0-9._~-]+$")) | "header = \"Authorization: Bearer \(.)\""' \
+                "${LOGIN_RESPONSE}" > "${AUTH_CONFIG}"; then
+            bootstrap_abort "default-credential login returned an invalid token"
+        fi
+        jq -n '{new_password: env.MARMOT_ADMIN_PASSWORD}' > "${PASSWORD_BODY}"
+        if curl --fail --silent --show-error --output /dev/null \
+                --config "${AUTH_CONFIG}" --header 'Content-Type: application/json' \
+                --data-binary "@${PASSWORD_BODY}" \
                 "http://127.0.0.1:${BOOTSTRAP_PORT}/api/v1/users/update-password" 2>/dev/null; then
             echo "marmot: default admin password replaced"
         else
-            rm -f /tmp/pw.json
-            echo "FATAL: could not replace the default admin password." >&2
-            echo "  Refusing to expose a catalog still reachable with admin:admin." >&2
-            kill "${BOOT_PID}" 2>/dev/null || true
-            exit 1
+            bootstrap_abort "could not replace the default admin password"
         fi
-        rm -f /tmp/pw.json
         ;;
-    *)
+    401)
+        if ! jq -e 'type == "object" and .error == "Invalid credentials"' "${LOGIN_RESPONSE}" >/dev/null; then
+            bootstrap_abort "default-credential login returned an unexpected rejection"
+        fi
         echo "marmot: default credential already replaced, keeping the existing password"
         ;;
+    *) bootstrap_abort "default-credential login returned HTTP ${LOGIN_STATUS}" ;;
 esac
+rm -f "${LOGIN_RESPONSE}" "${AUTH_CONFIG}" "${PASSWORD_BODY}"
+trap - EXIT
 
 kill -TERM "${BOOT_PID}" 2>/dev/null || true
 wait "${BOOT_PID}" 2>/dev/null || true
