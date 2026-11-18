@@ -71,9 +71,7 @@ errors stop startup. Credentials are passed through private files rather than pr
 API for stable references; reads need `assets:view`, writes need `assets:manage`. Query permissions
 replace the former `assets:preview` permission. Review custom roles and API clients. Marmot's signed
 plugin-index checks and automatic security updates remain enabled, so cache versions may change
-between image releases. A fresh Linux/amd64 test verified MRN operations, restricted-role guards,
-and catalog/password/plugin persistence across container replacement; it did not rehearse old-data
-migration, external connectors, SSO/browser login or Railway deployment.
+between image releases.
 
 **Keep `MARMOT_ENCRYPTION_SEED`.** Marmot encrypts stored pipeline credentials with
 XChaCha20-Poly1305, whose key must be exactly 32 bytes — not something a random secret string can
